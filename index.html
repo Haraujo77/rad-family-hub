@@ -1,0 +1,1543 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Family Hub Graph</title>
+  <style>
+    @font-face {
+      font-family: 'Phonic';
+      src: url('fonts/Phonic.woff2') format('woff2'),
+           url('fonts/Phonic.woff') format('woff'),
+           url('fonts/Phonic.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: 'Martina-plantjin';
+      src: url('fonts/Martina-plantjin.woff2') format('woff2'),
+           url('fonts/Martina-plantjin.woff') format('woff'),
+           url('fonts/Martina-plantjin.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+    }
+    body {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 0;
+      padding: 0;
+    }
+    canvas {
+      display: block;
+      position: fixed !important;
+      top: 50% !important;
+      left: 50% !important;
+      transform: translate(-50%, -50%) !important;
+      margin: 0 !important;
+    }
+    #controlPanel {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(15, 15, 15, 0.98);
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 15px;
+      width: 480px;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      z-index: 1000;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+      box-sizing: border-box;
+    }
+    #controlPanel * {
+      box-sizing: border-box;
+    }
+    #controlPanelContent > div {
+      background: rgba(25, 25, 25, 0.8);
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    #controlPanel.collapsed {
+      display: none;
+    }
+    #controlPanelContent {
+      display: block;
+    }
+    #togglePanelBtn {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      z-index: 1001;
+      background: rgba(20, 20, 20, 0.95);
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 14px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    }
+    #togglePanelBtn:hover {
+      background: rgba(40, 40, 40, 0.95);
+    }
+    #togglePanelBtn.panel-open {
+      display: none;
+    }
+    input, button {
+      font-size: 14px;
+    }
+    input[type="text"], input[type="number"], select {
+      background: #1a1a1a;
+      color: #fff;
+      border: 1px solid #2a2a2a;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    input[type="text"]:focus, input[type="number"]:focus, select:focus {
+      background: #222;
+      border-color: #4a4a4a;
+      outline: none;
+    }
+    input[type="color"] {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      cursor: pointer;
+      height: 28px;
+      width: 50px;
+    }
+    button {
+      background: #2a2a2a;
+      color: #fff;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover {
+      background: #3a3a3a;
+      border-color: #4a4a4a;
+    }
+    p {
+      margin: 6px 0;
+      color: #ccc;
+      font-size: 13px;
+    }
+    span {
+      color: #ccc;
+      font-size: 13px;
+    }
+    p {
+      margin: 8px 0 4px;
+    }
+  </style>
+
+  <!-- p5.js + addons -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/addons/p5.dom.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/p5.js-svg@1.5.1/dist/p5.svg.min.js"></script>
+</head>
+<body>
+  <script>
+/* 
+  Donut Diagram with HSL Color Picker, Child Color Alternation Option,
+  and a Center Graph Simulating 52‑Week Growth (Bitcoin‑Style Variations).
+  
+  Features:
+    - Animated donut diagram with interactive expansion/contraction.
+    - The center circle shows text (asset/section label above, value in bold,
+      and a week label below) drawn 30px from the top of the center circle.
+    - A line graph is drawn in white inside the center circle. The graph is 14px from the sides,
+      has a fixed height of 50px, and simulates Bitcoin‑like variations over the past 52 weeks.
+    - A black center circle (reset button) is drawn.
+    - Each category has a base HSL color and a data editor.
+    - Child colors are generated from the category’s HSL values (gradient or alternate mode).
+*/
+
+// Embedded data (from data.json)
+const EMBEDDED_DATA = {"categories": [{"name": "Jordan", "hue": 216, "sat": 100, "light": 58, "visible": true, "children": [{"name": "Jordan - Stock trades", "value": 18000, "visible": true}, {"name": "Jordan - Long-Term", "value": 40000, "visible": true, "weeks": [28000, 28200, 27800, 28100, 30000, 30200, 29800, 30100, 27000, 26800, 27200, 26900, 31000, 31200, 30800, 31100, 26000, 26200, 25800, 26100, 29000, 29200, 28800, 29100, 25000, 25200, 24800, 25100, 27000, 27200, 26800, 27100, 30000, 30200, 29800, 30100, 35000, 35200, 34800, 35100, 34000, 34200, 33800, 34100, 37000, 37200, 36800, 37100, 36000, 36200, 35800, 40000]}, {"name": "Jordan - Roth IRA", "value": 45000, "visible": true, "weeks": [31500, 31700, 31300, 31600, 34000, 34200, 33800, 34100, 30000, 29800, 30200, 29900, 33000, 33200, 32800, 33100, 29000, 29200, 28800, 29100, 32000, 32200, 31800, 32100, 28000, 28200, 27800, 28100, 30000, 30200, 29800, 30100, 33000, 33200, 32800, 33100, 40000, 40200, 39800, 40100, 39000, 39200, 38800, 39100, 42000, 42200, 41800, 42100, 41000, 41200, 40800, 45000]}, {"name": "Jordan - Evermere 401(k)", "value": 140000, "visible": true}]}, {"name": "Charlie and Jordan", "hue": 256, "sat": 75, "light": 70, "visible": true, "children": [{"name": "Household Investing", "value": 21000, "visible": true, "weeks": [14700, 14900, 14500, 14800, 16000, 16200, 15800, 16100, 14000, 13800, 14200, 13900, 15000, 15200, 14800, 15100, 13000, 13200, 12800, 13100, 14500, 14700, 14300, 14600, 12000, 12200, 11800, 12100, 13500, 13700, 13300, 13600, 15000, 15200, 14800, 15100, 18000, 18200, 17800, 18100, 17500, 17700, 17300, 17600, 19000, 19200, 18800, 19100, 18500, 18700, 18300, 21000]}, {"name": "Shared Goals", "value": 20000, "visible": true, "weeks": [14000, 14200, 13800, 14100, 15000, 15200, 14800, 15100, 13500, 13300, 13700, 13400, 14500, 14700, 14300, 14600, 13000, 13200, 12800, 13100, 14000, 14200, 13800, 14100, 12500, 12700, 12300, 12600, 13500, 13700, 13300, 13600, 14500, 14700, 14300, 14600, 17000, 17200, 16800, 17100, 16500, 16700, 16300, 16600, 18000, 18200, 17800, 18100, 17500, 17700, 17300, 20000]}]}, {"name": "Charlie", "hue": 84, "sat": 100, "light": 41, "visible": true, "children": [{"name": "Charlie - Savings", "value": 38000, "visible": true}, {"name": "Charlie - Investing", "value": 23000, "visible": true}, {"name": "Charlie - Traditional IRA", "value": 89000, "visible": true}, {"name": "Charlie - Work 401(k)", "value": 128000, "visible": true}]}]};
+
+//////////////////////////////
+// HELPER FUNCTIONS
+//////////////////////////////
+
+// Format a number with commas as thousands separators.
+function formatNumber(n) {
+  return n.toLocaleString();
+}
+
+// Convert HSL to RGB.
+// h in [0,360], s and l in [0,100]
+function hslToRgb(h, s, l) {
+  s /= 100;
+  l /= 100;
+  h /= 360;
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l; // achromatic
+  } else {
+    const hue2rgb = function(p, q, t) {
+      if(t < 0) t += 1;
+      if(t > 1) t -= 1;
+      if(t < 1/6) return p + (q - p) * 6 * t;
+      if(t < 1/2) return q;
+      if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    let q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    let p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+// Helper function to convert number to hex string with padding
+function toHex(n, digits) {
+  let str = n.toString(16);
+  while (str.length < digits) {
+    str = "0" + str;
+  }
+  return str;
+}
+
+// Convert HSL to a hex string.
+function hslToHex(h, s, l) {
+  let rgb = hslToRgb(h, s, l);
+  return "#" + toHex(rgb[0], 2) + toHex(rgb[1], 2) + toHex(rgb[2], 2);
+}
+
+// Convert a hex color string (e.g., "#RRGGBB") to HSL.
+// Returns an object { h, s, l }.
+function hexToHsl(hexStr) {
+  if (hexStr[0] === "#") {
+    hexStr = hexStr.substring(1);
+  }
+  let r, g, b;
+  if (hexStr.length === 3) {
+    r = parseInt(hexStr[0] + hexStr[0], 16);
+    g = parseInt(hexStr[1] + hexStr[1], 16);
+    b = parseInt(hexStr[2] + hexStr[2], 16);
+  } else if (hexStr.length === 6) {
+    r = parseInt(hexStr.substring(0, 2), 16);
+    g = parseInt(hexStr.substring(2, 4), 16);
+    b = parseInt(hexStr.substring(4, 6), 16);
+  }
+  r /= 255; g /= 255; b /= 255;
+  let max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  if (max === min) {
+    h = s = 0; // achromatic
+  } else {
+    let d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) {
+      h = (g - b) / d + (g < b ? 6 : 0);
+    } else if (max === g) {
+      h = (b - r) / d + 2;
+    } else {
+      h = (r - g) / d + 4;
+    }
+    h /= 6;
+  }
+  return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+/*
+  Given the parent's base HSL values, generate a child color.
+  In gradient mode the color gradually transitions from a bright variant
+  (baseLight + 10, capped at 100) to a dark variant (baseLight - 10, floored at 0).
+  In alternate mode the colors alternate between the bright and dark variants.
+*/
+function getChildColorHSL(baseHue, baseSat, baseLight, childIndex, numChildren) {
+  let hueOffset = 0;
+  if (!alternateChildColors && numChildren > 1) {
+    hueOffset = map(childIndex, 0, numChildren - 1, -5, 5);
+  }
+  let h = (baseHue + hueOffset + 360) % 360;
+  let s = baseSat;
+  let brightL = Math.min(baseLight + 10, 100);
+  let darkL = Math.max(baseLight - 10, 0);
+  let l;
+  if (!alternateChildColors) {
+    let t = (numChildren > 1) ? childIndex / (numChildren - 1) : 0.5;
+    l = lerp(brightL, darkL, t);
+  } else {
+    l = (childIndex % 2 === 0) ? brightL : darkL;
+  }
+  return color(hslToHex(h, s, l));
+}
+
+/*
+  Simulate a 52‑week growth history for an entity whose current value is "currentValue."
+  This version uses Perlin noise to create more volatile, Bitcoin‑style fluctuations.
+  The series starts at 70% of currentValue and ends at currentValue, with variations up to ±25%.
+  (This function is now called only on state changes so that the graph remains static between interactions.)
+*/
+function getGrowthData(currentValue) {
+  let data = [];
+  let startValue = currentValue * 0.7;
+  let noiseOffset = random(1000); // fixed offset per call
+  for (let i = 0; i < 52; i++) {
+    let t = i / 51; // from 0 to 1
+    let base = lerp(startValue, currentValue, t);
+    // Simulate fluctuations (mapped to ±25% variation)
+    let n = noise(noiseOffset + i * 0.1);
+    let fluctuation = map(n, 0, 1, -0.25, 0.25);
+    data.push(base * (1 + fluctuation));
+  }
+  return data;
+}
+
+//////////////////////////////
+// NEW: Growth Data Aggregation Functions
+//////////////////////////////
+
+function computeCategoryGrowthData(cat) {
+  const weeks = 52;
+  const result = Array(weeks).fill(0);
+  for (const child of cat.children) {
+    if (child.visible === false) continue;
+    const childGrowth = (child.weeks && child.weeks.length === weeks)
+      ? child.weeks
+      : getGrowthData(child.value);
+    for (let i = 0; i < weeks; i++) result[i] += childGrowth[i];
+  }
+  return result;
+}
+
+function computeOverallGrowthData() {
+  let weeks = 52;
+  let result = Array(weeks).fill(0);
+  for (let cat of categories) {
+    let catGrowth = computeCategoryGrowthData(cat);
+    for (let i = 0; i < weeks; i++) {
+      result[i] += catGrowth[i];
+    }
+  }
+  return result;
+}
+
+//////////////////////////////
+// GLOBAL VARIABLES & STATE
+//////////////////////////////
+
+// Gaps and thicknesses.
+let gapBetweenRings = 2;
+let gapBetweenParentSegments = 4;
+let gapBetweenChildSegments = 1;
+let normalParentThickness = 50;
+let normalChildThickness = 5;
+
+// Canvas and diagram sizes.
+const canvasSize = 375;
+const diagramDiameter = 347;
+const outerRadius = diagramDiameter / 2;
+let centerX, centerY;
+
+// State for animation.
+let state = "normal"; // "normal", "expanding", "expanded", "contracting"
+let expandedCategory = null;
+let animating = false;
+let animProgress = 0; // from 0 to 1
+const animDuration = 30; // frames
+
+// For expansion animation.
+let expandedNormalParentStart, expandedNormalParentEnd;
+let expandedNormalChildAngles = []; // array of {start, end} for each child
+
+// Center label text.
+// The new structure for the center label is: 
+//   Top line: asset/section label (12pt, regular, 50% opacity)
+//   Middle line: value label (rounded integer with thousands separator, bold, 21pt)
+//   Bottom line: week label (12pt, regular, 50% opacity)
+// When not hovering, the week label is always "Now".
+let centerLabel = "";
+// baseCenterLabel stores the non-hover state.
+let baseCenterLabel = "";
+
+// Global variables for the center graph:
+let growthData = [];      // Array of 52 numbers (one per week)
+let currentGrowthValue = 0; // The current value (total, category sum, or child value)
+
+// UI variables.
+let parentThicknessSlider, childThicknessSlider, parentThicknessInput, childThicknessInput;
+let gapParentSegSlider, gapParentSegInput, gapChildSegSlider, gapChildSegInput;
+let dataEditorDiv, saveSvgButton;
+let alternateCheckbox; // checkbox for alternate child colors
+let alternateChildColors = false; // global flag
+let controlPanel, controlPanelContent, togglePanelBtn; // collapsible panel elements
+let sortOrderSelect; // dropdown for sort order
+let sortOrder = "none"; // "none", "ascending", "descending"
+let fontSelect; // dropdown for font selection
+let selectedFont = "Phonic"; // default font
+let gradientCheckbox; // checkbox for radial gradient
+let useGradient = false; // default off
+
+// Categories data – each category has a name, base HSL values, and children.
+let categories;
+
+// Global variable to record the index of the selected (clicked) child segment.
+// If null, no child is selected.
+let selectedChildIndex = null;
+
+//////////////////////////////
+// UTILITY FUNCTIONS FOR DATA
+//////////////////////////////
+
+// Sort categories and children by their values
+function sortCategoriesAndChildren() {
+  if (sortOrder === "none") return;
+  
+  // Sort categories by their total value
+  let isAscending = sortOrder === "ascending";
+  categories.sort((a, b) => {
+    let aSum = 0, bSum = 0;
+    for (let child of a.children) {
+      if (child.visible !== false) aSum += child.value;
+    }
+    for (let child of b.children) {
+      if (child.visible !== false) bSum += child.value;
+    }
+    return isAscending ? aSum - bSum : bSum - aSum;
+  });
+  
+  // Sort children within each category
+  for (let cat of categories) {
+    cat.children.sort((a, b) => {
+      return isAscending ? a.value - b.value : b.value - a.value;
+    });
+  }
+}
+
+// Compute the total sum of all children (only visible ones).
+function computeTotalSum() {
+  let sum = 0;
+  for (let cat of categories) {
+    if (cat.visible !== false) {
+    for (let child of cat.children) {
+        if (child.visible !== false) {
+      sum += child.value;
+        }
+      }
+    }
+  }
+  return sum;
+}
+
+// Compute angular ranges (in degrees) for each category and its children (only visible ones).
+function computeNormalAngles() {
+  let total = 0;
+  for (let cat of categories) {
+    if (cat.visible !== false) {
+    for (let child of cat.children) {
+        if (child.visible !== false) {
+      total += child.value;
+    }
+  }
+    }
+  }
+  if (total === 0) return [];
+  
+  let angles = [];
+  let currentAngle = 0;
+  for (let cat of categories) {
+    if (cat.visible === false) continue;
+    
+    let catSum = 0;
+    for (let child of cat.children) {
+      if (child.visible !== false) {
+      catSum += child.value;
+    }
+    }
+    if (catSum === 0) continue;
+    
+    let catAngleSpan = (catSum / total) * 360;
+    let catStart = currentAngle;
+    let catEnd = currentAngle + catAngleSpan;
+    let childAngles = [];
+    let childCurrent = catStart;
+    for (let child of cat.children) {
+      if (child.visible === false) continue;
+      let span = (child.value / catSum) * catAngleSpan;
+      childAngles.push({ start: childCurrent, end: childCurrent + span });
+      childCurrent += span;
+    }
+    angles.push({ start: catStart, end: catEnd, children: childAngles, categoryIndex: categories.indexOf(cat) });
+    currentAngle += catAngleSpan;
+  }
+  return angles;
+}
+
+//////////////////////////////
+// SETUP & DATA EDITOR
+//////////////////////////////
+
+function setup() {
+  let cnv = createCanvas(canvasSize, canvasSize, SVG);
+  angleMode(RADIANS);
+  centerX = canvasSize / 2;
+  centerY = canvasSize / 2;
+  
+  // Center the canvas on the page - multiple approaches to ensure it works
+  function centerCanvas() {
+    let canvas = document.querySelector('canvas');
+    if (canvas) {
+      // Remove any inline styles p5.js might have added
+      canvas.removeAttribute('style');
+      // Apply centering styles
+      canvas.style.cssText = 'position: fixed !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; margin: 0 !important; z-index: 1 !important;';
+    }
+  }
+  
+  // Try immediately and also after a short delay
+  centerCanvas();
+  setTimeout(centerCanvas, 0);
+  setTimeout(centerCanvas, 100);
+  
+  // Sample data.
+  categories = JSON.parse(JSON.stringify(EMBEDDED_DATA.categories)); // Deep copy to avoid modifying original
+  
+  // Apply initial sorting
+  sortCategoriesAndChildren();
+  
+  // Initially, show overall total.
+  let total = computeTotalSum();
+  // For the overall (root) view, the top label is "Portfolio"
+  centerLabel = "Family Hub\n$" + formatNumber(total);
+  baseCenterLabel = centerLabel;
+  currentGrowthValue = total;
+  growthData = computeOverallGrowthData();
+  
+  // Create collapsible control panel
+  controlPanel = createDiv();
+  controlPanel.id("controlPanel");
+  controlPanel.style("position", "fixed");
+  controlPanel.style("top", "10px");
+  controlPanel.style("right", "10px");
+  controlPanel.style("background", "rgba(20, 20, 20, 0.95)");
+  controlPanel.style("border", "1px solid #444");
+  controlPanel.style("border-radius", "8px");
+  controlPanel.style("padding", "10px");
+      controlPanel.style("max-width", "480px");
+      controlPanel.style("width", "480px");
+  controlPanel.style("max-height", "90vh");
+  controlPanel.style("overflow-y", "auto");
+  controlPanel.style("z-index", "1000");
+  controlPanel.style("box-shadow", "0 4px 12px rgba(0, 0, 0, 0.5)");
+  
+  controlPanelContent = createDiv();
+  controlPanelContent.id("controlPanelContent");
+  controlPanel.child(controlPanelContent);
+  
+  // Create toggle button
+  togglePanelBtn = createButton("☰ Controls");
+  togglePanelBtn.id("togglePanelBtn");
+  togglePanelBtn.style("position", "fixed");
+  togglePanelBtn.style("top", "10px");
+  togglePanelBtn.style("right", "10px");
+  togglePanelBtn.style("z-index", "1001");
+  togglePanelBtn.style("background", "rgba(20, 20, 20, 0.95)");
+  togglePanelBtn.style("color", "#fff");
+  togglePanelBtn.style("border", "1px solid #444");
+  togglePanelBtn.style("border-radius", "8px");
+  togglePanelBtn.style("padding", "8px 16px");
+  togglePanelBtn.style("cursor", "pointer");
+  togglePanelBtn.style("font-size", "14px");
+  togglePanelBtn.style("box-shadow", "0 2px 8px rgba(0, 0, 0, 0.5)");
+  // Start with panel visible
+  controlPanel.style("display", "block");
+  togglePanelBtn.html("✕ Close");
+  
+  togglePanelBtn.mousePressed(() => {
+    let isVisible = controlPanel.style("display") !== "none";
+    if (isVisible) {
+      controlPanel.style("display", "none");
+      togglePanelBtn.html("☰ Controls");
+    } else {
+      controlPanel.style("display", "block");
+      togglePanelBtn.html("✕ Close");
+    }
+  });
+  
+  // Chart Visuals Section
+  let chartVisualsDiv = createDiv();
+  chartVisualsDiv.style("background", "rgba(30, 30, 30, 0.6)");
+  chartVisualsDiv.style("border", "1px solid #2a2a2a");
+  chartVisualsDiv.style("border-radius", "6px");
+  chartVisualsDiv.style("padding", "12px");
+  chartVisualsDiv.style("margin-bottom", "15px");
+  
+  let chartVisualsTitle = createP("Chart Visuals");
+  chartVisualsTitle.style("margin-top", "0");
+  chartVisualsTitle.style("margin-bottom", "10px");
+  chartVisualsTitle.style("font-weight", "bold");
+  chartVisualsTitle.style("color", "#fff");
+  chartVisualsDiv.child(chartVisualsTitle);
+  
+  // Create UI controls inside the Chart Visuals section.
+  let p1 = createP("Parent Ring Thickness (normal mode)");
+  chartVisualsDiv.child(p1);
+  parentThicknessSlider = createSlider(5, 200, normalParentThickness);
+  chartVisualsDiv.child(parentThicknessSlider);
+  parentThicknessInput = createInput(normalParentThickness.toString());
+  parentThicknessInput.style("background", "#1a1a1a");
+  parentThicknessInput.style("color", "#fff");
+  parentThicknessInput.style("border", "1px solid #2a2a2a");
+  chartVisualsDiv.child(parentThicknessInput);
+  parentThicknessSlider.input(() => {
+    normalParentThickness = parentThicknessSlider.value();
+    parentThicknessInput.value(normalParentThickness);
+  });
+  parentThicknessInput.input(() => {
+    let val = parseFloat(parentThicknessInput.value());
+    if (!isNaN(val)) {
+      normalParentThickness = val;
+      parentThicknessSlider.value(val);
+    }
+  });
+  
+  let p2 = createP("Child Ring Thickness (normal mode)");
+  chartVisualsDiv.child(p2);
+  childThicknessSlider = createSlider(5, 200, normalChildThickness);
+  chartVisualsDiv.child(childThicknessSlider);
+  childThicknessInput = createInput(normalChildThickness.toString());
+  childThicknessInput.style("background", "#1a1a1a");
+  childThicknessInput.style("color", "#fff");
+  childThicknessInput.style("border", "1px solid #2a2a2a");
+  chartVisualsDiv.child(childThicknessInput);
+  childThicknessSlider.input(() => {
+    normalChildThickness = childThicknessSlider.value();
+    childThicknessInput.value(normalChildThickness);
+  });
+  childThicknessInput.input(() => {
+    let val = parseFloat(childThicknessInput.value());
+    if (!isNaN(val)) {
+      normalChildThickness = val;
+      childThicknessSlider.value(val);
+    }
+  });
+  
+  let p3 = createP("Gap Between Parent Segments");
+  chartVisualsDiv.child(p3);
+  gapParentSegSlider = createSlider(0, 20, gapBetweenParentSegments);
+  chartVisualsDiv.child(gapParentSegSlider);
+  gapParentSegInput = createInput(gapBetweenParentSegments.toString());
+  gapParentSegInput.style("background", "#1a1a1a");
+  gapParentSegInput.style("color", "#fff");
+  gapParentSegInput.style("border", "1px solid #2a2a2a");
+  chartVisualsDiv.child(gapParentSegInput);
+  gapParentSegSlider.input(() => {
+    gapBetweenParentSegments = gapParentSegSlider.value();
+    gapParentSegInput.value(gapBetweenParentSegments);
+  });
+  gapParentSegInput.input(() => {
+    let val = parseFloat(gapParentSegInput.value());
+    if (!isNaN(val)) {
+      gapBetweenParentSegments = val;
+      gapParentSegSlider.value(val);
+    }
+  });
+  
+  let p4 = createP("Gap Between Child Segments");
+  chartVisualsDiv.child(p4);
+  gapChildSegSlider = createSlider(0, 20, gapBetweenChildSegments);
+  chartVisualsDiv.child(gapChildSegSlider);
+  gapChildSegInput = createInput(gapBetweenChildSegments.toString());
+  gapChildSegInput.style("background", "#1a1a1a");
+  gapChildSegInput.style("color", "#fff");
+  gapChildSegInput.style("border", "1px solid #2a2a2a");
+  chartVisualsDiv.child(gapChildSegInput);
+  gapChildSegSlider.input(() => {
+    gapBetweenChildSegments = gapChildSegSlider.value();
+    gapChildSegInput.value(gapBetweenChildSegments);
+  });
+  gapChildSegInput.input(() => {
+    let val = parseFloat(gapChildSegInput.value());
+    if (!isNaN(val)) {
+      gapBetweenChildSegments = val;
+      gapChildSegSlider.value(val);
+    }
+  });
+  
+  controlPanelContent.child(chartVisualsDiv);
+  
+  // Font selection dropdown - label and dropdown in same line
+  let fontDiv = createDiv();
+  fontDiv.style("display", "flex");
+  fontDiv.style("align-items", "center");
+  fontDiv.style("gap", "8px");
+  fontDiv.style("margin-bottom", "10px");
+  fontDiv.child(createSpan("Font:"));
+  fontSelect = createSelect();
+  fontSelect.option("Phonic");
+  fontSelect.option("Martina-plantjin");
+  fontSelect.selected("Phonic");
+  fontSelect.changed(() => {
+    selectedFont = fontSelect.value();
+  });
+  fontDiv.child(fontSelect);
+  controlPanelContent.child(fontDiv);
+  
+  // Sort order dropdown - label and dropdown in same line
+  let sortDiv = createDiv();
+  sortDiv.style("display", "flex");
+  sortDiv.style("align-items", "center");
+  sortDiv.style("gap", "8px");
+  sortDiv.style("margin-bottom", "10px");
+  sortDiv.child(createSpan("Sort Order:"));
+  sortOrderSelect = createSelect();
+  sortOrderSelect.option("None");
+  sortOrderSelect.option("Ascending");
+  sortOrderSelect.option("Descending");
+  sortOrderSelect.selected("None");
+  sortOrderSelect.changed(() => {
+    sortOrder = sortOrderSelect.value().toLowerCase();
+    sortCategoriesAndChildren();
+    updateDataEditor();
+  });
+  sortDiv.child(sortOrderSelect);
+  controlPanelContent.child(sortDiv);
+  
+  // Data editor.
+  dataEditorDiv = createDiv();
+  controlPanelContent.child(dataEditorDiv);
+  updateDataEditor();
+  
+  // Checkbox for alternate child colors.
+  alternateCheckbox = createCheckbox("Alternate Child Colors", false);
+  controlPanelContent.child(alternateCheckbox);
+  alternateCheckbox.changed(() => {
+    alternateChildColors = alternateCheckbox.checked();
+  });
+  alternateChildColors = false; // Set to false to match image
+  
+  // Checkbox for radial gradient on parent rings.
+  gradientCheckbox = createCheckbox("Radial Gradient", false);
+  controlPanelContent.child(gradientCheckbox);
+  gradientCheckbox.changed(() => {
+    useGradient = gradientCheckbox.checked();
+  });
+  useGradient = false; // Default off
+  
+  // Button to save as SVG.
+  saveSvgButton = createButton("Save SVG");
+  controlPanelContent.child(saveSvgButton);
+  saveSvgButton.mousePressed(() => {
+    save("sketch.svg");
+  });
+  
+  // Set initial slider values to match image (after sliders are created)
+  parentThicknessSlider.value(50);
+  parentThicknessInput.value("50");
+  normalParentThickness = 50;
+  childThicknessSlider.value(5);
+  childThicknessInput.value("5");
+  normalChildThickness = 5;
+  gapParentSegSlider.value(4);
+  gapParentSegInput.value("4");
+  gapBetweenParentSegments = 4;
+  gapChildSegSlider.value(1);
+  gapChildSegInput.value("1");
+  gapBetweenChildSegments = 1;
+
+}
+
+function keyPressed(e){
+    if (e.metaKey && key == 'p'){
+        save("sketch.svg");
+        return false; // prevent default printing action
+    }
+}
+
+//////////////////////////////
+// UPDATE DATA EDITOR
+//////////////////////////////
+
+function updateDataEditor() {
+  dataEditorDiv.html("");
+  dataEditorDiv.style("color", "white");
+  dataEditorDiv.style("font-family", "sans-serif");
+  
+  for (let i = 0; i < categories.length; i++) {
+    let cat = categories[i];
+    let catDiv = createDiv();
+    catDiv.style("margin-bottom", "15px");
+    catDiv.style("padding", "12px");
+    catDiv.style("background", "rgba(30, 30, 30, 0.6)");
+    catDiv.style("border", "1px solid #2a2a2a");
+    catDiv.style("border-radius", "6px");
+    
+    // Category header: checkbox, label, and name in same line
+    let catHeaderDiv = createDiv();
+    catHeaderDiv.style("display", "flex");
+    catHeaderDiv.style("align-items", "center");
+    catHeaderDiv.style("gap", "8px");
+    catHeaderDiv.style("margin-bottom", "10px");
+    let catVisibilityCheckbox = createCheckbox("", cat.visible !== false);
+    catVisibilityCheckbox.changed(() => {
+      cat.visible = catVisibilityCheckbox.checked();
+      sortCategoriesAndChildren();
+    });
+    catHeaderDiv.child(catVisibilityCheckbox);
+    let catLabelSpan = createSpan("Category " + (i + 1) + ":");
+    catLabelSpan.style("min-width", "85px");
+    catLabelSpan.style("white-space", "nowrap");
+    catHeaderDiv.child(catLabelSpan);
+    let nameInput = createInput(cat.name);
+    nameInput.style("background", "#1a1a1a");
+    nameInput.style("color", "#fff");
+    nameInput.style("border", "1px solid #2a2a2a");
+    nameInput.style("flex", "1");
+    nameInput.style("min-width", "0");
+    nameInput.input(() => { cat.name = nameInput.value(); });
+    catHeaderDiv.child(nameInput);
+    catDiv.child(catHeaderDiv);
+    
+    // Color controls in single line
+    let colorDiv = createDiv();
+    colorDiv.style("display", "flex");
+    colorDiv.style("align-items", "center");
+    colorDiv.style("gap", "8px");
+    colorDiv.style("margin-bottom", "10px");
+    colorDiv.style("flex-wrap", "nowrap");
+    let colorLabel = createSpan("Color:");
+    colorLabel.style("min-width", "50px");
+    colorDiv.child(colorLabel);
+    let colorHex = hslToHex(cat.hue, cat.sat, cat.light);
+    let huePicker = createColorPicker(colorHex);
+    huePicker.style("background", "#1a1a1a");
+    huePicker.style("border", "1px solid #2a2a2a");
+    huePicker.style("width", "40px");
+    huePicker.style("height", "28px");
+    huePicker.input(() => {
+      let picked = huePicker.value();
+      let hsl = hexToHsl(picked);
+      cat.hue = hsl.h;
+      cat.sat = hsl.s;
+      cat.light = hsl.l;
+    });
+    colorDiv.child(huePicker);
+    let hueLabel = createSpan("Hue:");
+    hueLabel.style("min-width", "35px");
+    colorDiv.child(hueLabel);
+    let hueInput = createInput(cat.hue.toString());
+    hueInput.size(50);
+    hueInput.style("background", "#1a1a1a");
+    hueInput.style("color", "#fff");
+    hueInput.style("border", "1px solid #2a2a2a");
+    hueInput.style("width", "55px");
+    hueInput.style("max-width", "55px");
+    hueInput.input(() => {
+      let val = parseFloat(hueInput.value());
+      if (!isNaN(val)) {
+        cat.hue = ((val % 360) + 360) % 360;
+        huePicker.value(hslToHex(cat.hue, cat.sat, cat.light));
+      }
+    });
+    colorDiv.child(hueInput);
+    let satLabel = createSpan("Sat:");
+    satLabel.style("min-width", "35px");
+    colorDiv.child(satLabel);
+    let satInput = createInput(cat.sat.toString());
+    satInput.size(50);
+    satInput.style("background", "#1a1a1a");
+    satInput.style("color", "#fff");
+    satInput.style("border", "1px solid #2a2a2a");
+    satInput.style("width", "55px");
+    satInput.style("max-width", "55px");
+    satInput.input(() => {
+      let val = parseFloat(satInput.value());
+      if (!isNaN(val)) { cat.sat = constrain(val, 0, 100); }
+    });
+    colorDiv.child(satInput);
+    let lightLabel = createSpan("Light:");
+    lightLabel.style("min-width", "45px");
+    colorDiv.child(lightLabel);
+    let lightInput = createInput(cat.light.toString());
+    lightInput.size(50);
+    lightInput.style("background", "#1a1a1a");
+    lightInput.style("color", "#fff");
+    lightInput.style("border", "1px solid #2a2a2a");
+    lightInput.style("width", "55px");
+    lightInput.style("max-width", "55px");
+    lightInput.input(() => {
+      let val = parseFloat(lightInput.value());
+      if (!isNaN(val)) { cat.light = constrain(val, 0, 100); }
+    });
+    colorDiv.child(lightInput);
+    catDiv.child(colorDiv);
+    
+    // List children - everything in one line per child
+    for (let j = 0; j < cat.children.length; j++) {
+      let child = cat.children[j];
+      let childDiv = createDiv();
+      childDiv.style("display", "flex");
+      childDiv.style("align-items", "center");
+      childDiv.style("gap", "8px");
+      childDiv.style("margin-bottom", "6px");
+      childDiv.style("flex-wrap", "nowrap");
+      
+      let childVisibilityCheckbox = createCheckbox("", child.visible !== false);
+      childVisibilityCheckbox.changed(() => {
+        child.visible = childVisibilityCheckbox.checked();
+        sortCategoriesAndChildren();
+      });
+      childDiv.child(childVisibilityCheckbox);
+      let childLabel = createSpan("Child " + (j + 1) + ":");
+      childLabel.style("white-space", "nowrap");
+      childLabel.style("min-width", "70px");
+      childDiv.child(childLabel);
+      
+      let childNameInput = createInput(child.name);
+      childNameInput.style("background", "#1a1a1a");
+      childNameInput.style("color", "#fff");
+      childNameInput.style("border", "1px solid #2a2a2a");
+      childNameInput.style("flex", "1");
+      childNameInput.style("min-width", "0");
+      childNameInput.input(() => { child.name = childNameInput.value(); });
+      childDiv.child(childNameInput);
+      
+      let valueLabel = createSpan("Value:");
+      valueLabel.style("min-width", "50px");
+      valueLabel.style("white-space", "nowrap");
+      childDiv.child(valueLabel);
+      let childValueInput = createInput(child.value.toString());
+      childValueInput.size(90);
+      childValueInput.style("background", "#1a1a1a");
+      childValueInput.style("color", "#fff");
+      childValueInput.style("border", "1px solid #2a2a2a");
+      childValueInput.style("width", "100px");
+      childValueInput.style("max-width", "100px");
+      childValueInput.input(() => {
+        let val = parseFloat(childValueInput.value());
+        if (!isNaN(val)) { child.value = val; }
+      });
+      childDiv.child(childValueInput);
+      
+      catDiv.child(childDiv);
+    }
+    
+    let buttonDiv = createDiv();
+    buttonDiv.style("display", "flex");
+    buttonDiv.style("gap", "8px");
+    buttonDiv.style("margin-top", "8px");
+    let addChildBtn = createButton("Add Child");
+    addChildBtn.mousePressed(() => {
+      cat.children.push({ name: "New Child", value: 10, visible: true });
+      updateDataEditor();
+    });
+    buttonDiv.child(addChildBtn);
+    if (cat.children.length > 2) {
+      let removeChildBtn = createButton("Remove Child");
+      removeChildBtn.mousePressed(() => {
+        cat.children.pop();
+        updateDataEditor();
+      });
+      buttonDiv.child(removeChildBtn);
+    }
+    catDiv.child(buttonDiv);
+    
+    dataEditorDiv.child(catDiv);
+  }
+  
+  let globalButtonDiv = createDiv();
+  globalButtonDiv.style("display", "flex");
+  globalButtonDiv.style("gap", "8px");
+  globalButtonDiv.style("margin-top", "10px");
+  let addCatBtn = createButton("Add Category");
+  addCatBtn.mousePressed(() => {
+    categories.push({
+      name: "New Category",
+      hue: 180, sat: 70, light: 50, visible: true,
+      children: [{ name: "New Child", value: 10, visible: true }, { name: "New Child", value: 10, visible: true }]
+    });
+    updateDataEditor();
+  });
+  globalButtonDiv.child(addCatBtn);
+  
+  if (categories.length > 1) {
+    let removeCatBtn = createButton("Remove Last Category");
+    removeCatBtn.mousePressed(() => {
+      categories.pop();
+      updateDataEditor();
+    });
+    globalButtonDiv.child(removeCatBtn);
+  }
+  dataEditorDiv.child(globalButtonDiv);
+}
+
+//////////////////////////////
+// DRAWING FUNCTIONS
+//////////////////////////////
+
+function draw() {
+  background(0);
+  
+  // Do not update growthData per frame; it only changes on mouse interactions.
+  normalParentThickness = parentThicknessSlider.value();
+  normalChildThickness = childThicknessSlider.value();
+  // Compute the total ring thickness in normal mode.
+  let totalRingThickness = normalParentThickness + gapBetweenRings + normalChildThickness;
+  // Use the same currentCenterRadius for detecting clicks.
+  let currentCenterRadius = outerRadius - totalRingThickness;
+  
+  // Draw the black center (reset) circle.
+  fill(0);
+  noStroke();
+  ellipse(centerX, centerY, currentCenterRadius * 2, currentCenterRadius * 2);
+  
+  if (animating) {
+    animProgress += 1 / animDuration;
+    if (animProgress >= 1) {
+      animProgress = 1;
+      animating = false;
+      if (state === "expanding") {
+        state = "expanded";
+      } else if (state === "contracting") {
+        state = "normal";
+        expandedCategory = null;
+        expandedNormalChildAngles = [];
+        expandedNormalParentStart = null;
+        expandedNormalParentEnd = null;
+        // Clear any child selection when contracting.
+        selectedChildIndex = null;
+      }
+    }
+  }
+  
+  // Set color mode.
+  colorMode(HSB, 360, 100, 100, 100);
+  
+  // Apply sorting before computing angles
+  sortCategoriesAndChildren();
+  
+  if (state === "normal") {
+    let angles = computeNormalAngles();
+    for (let i = 0; i < angles.length; i++) {
+      let catAngle = angles[i];
+      let catIndex = catAngle.categoryIndex !== undefined ? catAngle.categoryIndex : i;
+      let cat = categories[catIndex];
+      if (cat.visible === false) continue;
+      
+      let catColor = color(hslToHex(cat.hue, cat.sat, cat.light));
+      let innerR = currentCenterRadius;
+      let outerR = innerR + normalParentThickness;
+      if (useGradient) {
+        drawDonutSegmentWithGradient(centerX, centerY, innerR, outerR, catAngle.start, catAngle.end,
+                           gapBetweenParentSegments, gapBetweenParentSegments, catColor);
+      } else {
+      drawDonutSegment(centerX, centerY, innerR, outerR, catAngle.start, catAngle.end,
+                         gapBetweenParentSegments, gapBetweenParentSegments, catColor);
+      }
+      
+      let childInner = outerR + gapBetweenRings;
+      let childOuter = childInner + normalChildThickness;
+      let childAngles = catAngle.children;
+      let visibleChildIndex = 0;
+      for (let j = 0; j < cat.children.length; j++) {
+        if (cat.children[j].visible === false) continue;
+        let childAngleIndex = visibleChildIndex;
+        if (childAngleIndex < childAngles.length) {
+        let childCol = getChildColorHSL(cat.hue, cat.sat, cat.light, j, cat.children.length);
+          let gapLeft = (childAngleIndex === 0) ? gapBetweenParentSegments : gapBetweenChildSegments;
+          let gapRight = (childAngleIndex === childAngles.length - 1) ? gapBetweenParentSegments : gapBetweenChildSegments;
+          drawDonutSegment(centerX, centerY, childInner, childOuter, childAngles[childAngleIndex].start, childAngles[childAngleIndex].end,
+                           gapLeft, gapRight, childCol);
+          visibleChildIndex++;
+        }
+      }
+    }
+  } else if (state === "expanding" || state === "expanded" || state === "contracting") {
+    // In expanded mode, use interpolation.
+    let p = (state === "contracting") ? 1 - animProgress : animProgress;
+    let currentParentThickness = lerp(normalParentThickness, normalChildThickness, p);
+    let currentChildThickness = lerp(normalChildThickness, normalParentThickness, p);
+    
+    // Draw the expanded category.
+    let currentParentStart = lerp(expandedNormalParentStart, 0, p);
+    let currentParentEnd = lerp(expandedNormalParentEnd, 360, p);
+    let parentInner = currentCenterRadius;
+    let parentOuter = parentInner + currentParentThickness;
+    let expCat = categories[expandedCategory];
+    let expColor = color(hslToHex(expCat.hue, expCat.sat, expCat.light));
+    if (useGradient) {
+      drawDonutSegmentWithGradient(centerX, centerY, parentInner, parentOuter, currentParentStart, currentParentEnd,
+                       gapBetweenParentSegments, gapBetweenParentSegments, expColor);
+    } else {
+    drawDonutSegment(centerX, centerY, parentInner, parentOuter, currentParentStart, currentParentEnd,
+                     gapBetweenParentSegments, gapBetweenParentSegments, expColor);
+    }
+    
+    let childTotal = 0;
+    for (let child of expCat.children) {
+      if (child.visible !== false) {
+      childTotal += child.value;
+      }
+    }
+    let targetChildAngles = [];
+    let accAngle = 0;
+    for (let child of expCat.children) {
+      if (child.visible === false) continue;
+      let span = (child.value / childTotal) * 360;
+      targetChildAngles.push({ start: accAngle, end: accAngle + span });
+      accAngle += span;
+    }
+    let childInner = parentOuter + gapBetweenRings;
+    let childOuter = childInner + currentChildThickness;
+    // Map visible children to their actual indices
+    let visibleChildIndices = [];
+    for (let j = 0; j < expCat.children.length; j++) {
+      if (expCat.children[j].visible !== false) {
+        visibleChildIndices.push(j);
+      }
+    }
+    for (let k = 0; k < expandedNormalChildAngles.length && k < targetChildAngles.length; k++) {
+      let normChild = expandedNormalChildAngles[k];
+      let target = targetChildAngles[k];
+      let actualChildIndex = visibleChildIndices[k];
+      let currentChildStart = lerp(normChild.start, target.start, p);
+      let currentChildEnd = lerp(normChild.end, target.end, p);
+      let childColor = getChildColorHSL(expCat.hue, expCat.sat, expCat.light, actualChildIndex, expCat.children.length);
+      // If a child segment was clicked, make all non-selected segments 50% opaque.
+      if (selectedChildIndex !== null) {
+        if (actualChildIndex !== selectedChildIndex) {
+          childColor.setAlpha(50);
+        } else {
+          childColor.setAlpha(100);
+        }
+      }
+      drawDonutSegment(centerX, centerY, childInner, childOuter, currentChildStart, currentChildEnd,
+                         gapBetweenChildSegments, gapBetweenChildSegments, childColor);
+    }
+    
+    // Draw other categories as transparent.
+    let angles = computeNormalAngles();
+    for (let i = 0; i < angles.length; i++) {
+      if (i === expandedCategory) continue;
+      let arc = angles[i];
+      let target;
+      if (expandedCategory === 0) {
+        target = 360;
+      } else if (expandedCategory === angles.length - 1) {
+        target = 0;
+      } else {
+        let expandedMid = (expandedNormalParentStart + expandedNormalParentEnd) / 2;
+        let mid = (arc.start + arc.end) / 2;
+        target = (mid < expandedMid ? 0 : 360);
+      }
+      let currentStart = lerp(arc.start, target, p);
+      let currentEnd = lerp(arc.end, target, p);
+      let cat = categories[i];
+      let innerR = currentCenterRadius;
+      let outerR = innerR + currentParentThickness;
+      let otherColor = color(hslToHex(cat.hue, cat.sat, cat.light));
+      let alphaVal = (1 - p) * 100;
+      if (alphaVal > 0) {
+        otherColor.setAlpha(alphaVal);
+        if (useGradient) {
+          drawDonutSegmentWithGradient(centerX, centerY, innerR, outerR, currentStart, currentEnd,
+                             gapBetweenParentSegments, gapBetweenParentSegments, otherColor);
+        } else {
+        drawDonutSegment(centerX, centerY, innerR, outerR, currentStart, currentEnd,
+                           gapBetweenParentSegments, gapBetweenParentSegments, otherColor);
+        }
+      }
+      
+      let childAngles = arc.children;
+      let childInner = outerR + gapBetweenRings;
+      let childOuter = childInner + currentChildThickness;
+      for (let j = 0; j < childAngles.length; j++) {
+        let gapLeft = (j === 0) ? gapBetweenParentSegments : gapBetweenChildSegments;
+        let gapRight = (j === childAngles.length - 1) ? gapBetweenParentSegments : gapBetweenChildSegments;
+        let currentChildStart = lerp(childAngles[j].start, target, p);
+        let currentChildEnd = lerp(childAngles[j].end, target, p);
+        let childColor = getChildColorHSL(cat.hue, cat.sat, cat.light, j, cat.children.length);
+        if (alphaVal > 0) {
+          childColor.setAlpha(alphaVal);
+          drawDonutSegment(centerX, centerY, childInner, childOuter, currentChildStart, currentChildEnd,
+                             gapLeft, gapRight, childColor);
+        }
+      }
+    }
+  }
+  
+  // Draw the center graph and text.
+  drawCenterGraph(currentCenterRadius);
+  drawCenterText(currentCenterRadius);
+}
+
+function drawDonutSegment(cx, cy, innerR, outerR, startAngleDeg, endAngleDeg, gapLeftPx, gapRightPx, col) {
+  let startRad = radians(startAngleDeg);
+  let endRad = radians(endAngleDeg);
+  
+  let outerGapLeft = gapLeftPx / outerR;
+  let outerGapRight = gapRightPx / outerR;
+  let innerGapLeft = gapLeftPx / innerR;
+  let innerGapRight = gapRightPx / innerR;
+  
+  let outerStartRad = startRad + outerGapLeft/2;
+  let outerEndRad = endRad - outerGapRight/2;
+  let innerStartRad = startRad + innerGapLeft/2;
+  let innerEndRad = endRad - innerGapRight/2;
+  
+  try {
+    fill(col);
+    noStroke();
+    beginShape();
+    let outerSteps = max(2, int((outerEndRad - outerStartRad) * outerR / 2));
+    for (let i = 0; i <= outerSteps; i++) {
+      let ang = lerp(outerStartRad, outerEndRad, i/outerSteps);
+      vertex(cx + outerR * cos(ang), cy + outerR * sin(ang));
+    }
+    let innerSteps = max(2, int((innerEndRad - innerStartRad) * innerR / 2));
+    for (let i = innerSteps; i >= 0; i--) {
+      let ang = lerp(innerStartRad, innerEndRad, i/innerSteps);
+      vertex(cx + innerR * cos(ang), cy + innerR * sin(ang));
+    }
+    endShape(CLOSE);
+  } catch(e) {
+    // Skip drawing this segment if an error occurs.
+  }
+}
+
+// Draw donut segment with radial gradient (from background color at inner edge to ring color at outer edge)
+function drawDonutSegmentWithGradient(cx, cy, innerR, outerR, startAngleDeg, endAngleDeg, gapLeftPx, gapRightPx, col) {
+  let startRad = radians(startAngleDeg);
+  let endRad = radians(endAngleDeg);
+  
+  let outerGapLeft = gapLeftPx / outerR;
+  let outerGapRight = gapRightPx / outerR;
+  let innerGapLeft = gapLeftPx / innerR;
+  let innerGapRight = gapRightPx / innerR;
+  
+  let outerStartRad = startRad + outerGapLeft/2;
+  let outerEndRad = endRad - outerGapRight/2;
+  let innerStartRad = startRad + innerGapLeft/2;
+  let innerEndRad = endRad - innerGapRight/2;
+  
+  try {
+    // Convert colors to RGB for proper interpolation
+    // Switch to RGB mode temporarily (draw function sets HSB mode)
+    colorMode(RGB, 255);
+    
+    // Extract RGB values from the color (works regardless of current color mode)
+    let colR = red(col);
+    let colG = green(col);
+    let colB = blue(col);
+    
+    // Draw with radial gradient by creating multiple concentric arcs
+    let gradientSteps = 50; // Number of gradient steps for smooth transition
+    noStroke();
+    
+    for (let step = 0; step < gradientSteps; step++) {
+      let t = step / (gradientSteps - 1);
+      let currentInnerR = lerp(innerR, outerR, step / gradientSteps);
+      let currentOuterR = lerp(innerR, outerR, (step + 1) / gradientSteps);
+      
+      // Interpolate RGB values from black (inner) to ring color (outer)
+      let r = lerp(0, colR, t);
+      let g = lerp(0, colG, t);
+      let b = lerp(0, colB, t);
+      
+      fill(r, g, b);
+      beginShape();
+      let outerSteps = max(2, int((outerEndRad - outerStartRad) * currentOuterR / 2));
+      for (let i = 0; i <= outerSteps; i++) {
+        let ang = lerp(outerStartRad, outerEndRad, i/outerSteps);
+        vertex(cx + currentOuterR * cos(ang), cy + currentOuterR * sin(ang));
+      }
+      let innerSteps = max(2, int((innerEndRad - innerStartRad) * currentInnerR / 2));
+      for (let i = innerSteps; i >= 0; i--) {
+        let ang = lerp(innerStartRad, innerEndRad, i/innerSteps);
+        vertex(cx + currentInnerR * cos(ang), cy + currentInnerR * sin(ang));
+      }
+      endShape(CLOSE);
+    }
+    
+    // Restore HSB color mode (draw function uses HSB)
+    colorMode(HSB, 360, 100, 100, 100);
+  } catch(e) {
+    // Fallback to solid color if gradient fails
+    drawDonutSegment(cx, cy, innerR, outerR, startAngleDeg, endAngleDeg, gapLeftPx, gapRightPx, col);
+  }
+}
+
+//////////////////////////////
+// CENTER GRAPH & TEXT DRAWING FUNCTIONS
+//////////////////////////////
+
+// Draws the 52‑week growth line graph inside the center circle.
+// The graph has a fixed height of 50px and 14px horizontal margins,
+// and is centered vertically.
+function drawCenterGraph(currentCenterRadius) {
+  if (growthData.length < 52) return;
+  
+  let circleDiameter = currentCenterRadius * 2;
+  let graphX = centerX - currentCenterRadius + 14;
+  let graphW = circleDiameter - 28;
+  let graphH = 50;
+  let graphY = centerY - graphH/2;
+  
+  let minVal = min(growthData);
+  let maxVal = max(growthData);
+  if (maxVal === minVal) {
+    maxVal = minVal + 1;
+  }
+  
+  // Determine if the mouse is over the graph region.
+  let isHover = (mouseX >= graphX && mouseX <= graphX + graphW &&
+                 mouseY >= graphY && mouseY <= graphY + graphH && growthData.length >= 52);
+  
+  if (isHover) {
+    // Compute hovered week index.
+    let hoverIndex = floor(map(mouseX, graphX, graphX + graphW, 0, 52));
+    hoverIndex = constrain(hoverIndex, 0, 51);
+    
+    // Draw the left segment (full opacity).
+    stroke(0, 0, 100, 100);
+    strokeWeight(1);
+    noFill();
+    beginShape();
+    for (let i = 0; i <= hoverIndex; i++) {
+      let x = map(i, 0, growthData.length - 1, graphX, graphX + graphW);
+      let y = map(growthData[i], minVal, maxVal, graphY + graphH, graphY);
+      vertex(x, y);
+    }
+    endShape();
+    
+    // Draw the right segment (50% opacity).
+    stroke(0, 0, 100, 50);
+    beginShape();
+    for (let i = hoverIndex; i < growthData.length; i++) {
+      let x = map(i, 0, growthData.length - 1, graphX, graphX + graphW);
+      let y = map(growthData[i], minVal, maxVal, graphY + graphH, graphY);
+      vertex(x, y);
+    }
+    endShape();
+  } else {
+    // If not hovering, draw entire line at full opacity.
+    stroke(0, 0, 100, 100);
+    strokeWeight(1);
+    noFill();
+    beginShape();
+    for (let i = 0; i < growthData.length; i++) {
+      let x = map(i, 0, growthData.length - 1, graphX, graphX + graphW);
+      let y = map(growthData[i], minVal, maxVal, graphY + graphH, graphY);
+      vertex(x, y);
+    }
+    endShape();
+  }
+  
+  // Left circle always at the start:
+  let xStart = graphX;
+  let yStart = map(growthData[0], minVal, maxVal, graphY + graphH, graphY);
+  
+  // Determine the right circle position:
+  let xEnd, yEnd;
+  if (isHover) {
+    let weekIndex = floor(map(mouseX, graphX, graphX + graphW, 0, 52));
+    weekIndex = constrain(weekIndex, 0, 51);
+    xEnd = map(weekIndex, 0, growthData.length - 1, graphX, graphX + graphW);
+    yEnd = map(growthData[weekIndex], minVal, maxVal, graphY + graphH, graphY);
+  } else {
+    xEnd = graphX + graphW;
+    yEnd = map(growthData[growthData.length - 1], minVal, maxVal, graphY + graphH, graphY);
+  }
+  
+  noStroke();
+  fill(255);
+  ellipse(xStart, yStart, 6, 6);
+  ellipse(xEnd, yEnd, 6, 6);
+}
+
+// Draws the center text (label) inside the center circle.
+// The label is always drawn as three lines with identical positioning and style:
+//   Top line: asset/section label (12pt, regular, 50% opacity)
+//   Middle line: value label (rounded integer with thousands separators, bold, 21pt)
+//   Bottom line: week label (12pt, regular, 50% opacity)
+// When the mouse is over the graph region, the middle and bottom lines update to show the
+// weekly value and "Week X" (or "Now" for week 52). Otherwise, the week label remains "Now."
+function drawCenterText(currentCenterRadius) {
+  let centerCircleTop = centerY - currentCenterRadius;
+  let circleDiameter = currentCenterRadius * 2;
+  let graphX = centerX - currentCenterRadius + 14;
+  let graphW = circleDiameter - 28;
+  let graphH = 50;
+  let graphY = centerY - graphH/2;
+  
+  // Determine if mouse is over the graph region.
+  let isHover = (mouseX >= graphX && mouseX <= graphX + graphW &&
+                 mouseY >= graphY && mouseY <= graphY + graphH && growthData.length >= 52);
+  
+  // Split baseCenterLabel into asset label and overall value.
+  let parts = baseCenterLabel.split("\n");
+  let assetLabel = parts[0] || "";
+  let overallValueLabel = parts[1] || "";
+  
+  let valueLabel, weekLabel;
+  if (isHover) {
+    let weekIndex = floor(map(mouseX, graphX, graphX + graphW, 0, 52));
+    weekIndex = constrain(weekIndex, 0, 51);
+    let weeklyValue = Math.round(growthData[weekIndex]); // round to nearest integer
+    valueLabel = "$" + formatNumber(weeklyValue);
+    weekLabel = (weekIndex === 51 ? "Now" : "Week " + (weekIndex + 1));
+  } else {
+    valueLabel = overallValueLabel;
+    weekLabel = "Now";
+  }
+  
+  push();
+  textAlign(CENTER, CENTER);
+  // Apply selected font
+  textFont(selectedFont);
+  // Top line: asset label (12pt, regular, 50% opacity)
+  textSize(12);
+  fill(0, 0, 100, 50);
+  text(assetLabel, centerX, centerCircleTop + 30);
+  
+  // Middle line: value label (21pt, bold, full opacity)
+  textSize(21);
+  textStyle(BOLD);
+  fill(0, 0, 100, 100);
+  text(valueLabel, centerX, centerCircleTop + 30 + 24);
+  
+  // Bottom line: week label (12pt, regular, 50% opacity)
+  textSize(12);
+  textStyle(NORMAL);
+  fill(0, 0, 100, 50);
+  text(weekLabel, centerX, centerCircleTop + 30 + 24 + 16);
+  pop();
+}
+
+//////////////////////////////
+// MOUSE INTERACTION
+//////////////////////////////
+
+function mousePressed() {
+  let totalRingThickness = normalParentThickness + gapBetweenRings + normalChildThickness;
+  let currentCenterRadius = outerRadius - totalRingThickness;
+  let d = dist(mouseX, mouseY, centerX, centerY);
+  let overallTotal = computeTotalSum();
+  
+  if (state === "normal") {
+    // Clicking in the parent ring.
+    if (d >= currentCenterRadius && d <= currentCenterRadius + normalParentThickness) {
+      let angle = degrees(atan2(mouseY - centerY, mouseX - centerX));
+      if (angle < 0) angle += 360;
+      let angles = computeNormalAngles();
+      for (let i = 0; i < angles.length; i++) {
+        if (angle >= angles[i].start && angle < angles[i].end) {
+          expandedCategory = angles[i].categoryIndex !== undefined ? angles[i].categoryIndex : i;
+          expandedNormalParentStart = angles[i].start;
+          expandedNormalParentEnd = angles[i].end;
+          expandedNormalChildAngles = angles[i].children;
+          animProgress = 0;
+          animating = true;
+          state = "expanding";
+          // Clear any previous child selection.
+          selectedChildIndex = null;
+          let catSum = 0;
+          let catIdx = expandedCategory;
+          for (let child of categories[catIdx].children) {
+            if (child.visible !== false) {
+            catSum += child.value;
+          }
+          }
+          centerLabel = categories[catIdx].name + "\n$" + formatNumber(catSum);
+          baseCenterLabel = centerLabel;
+          currentGrowthValue = catSum;
+          growthData = computeCategoryGrowthData(categories[i]);
+          break;
+        }
+      }
+    }
+  } else if (state === "expanded") {
+    // In expanded state:
+    // 1. Clicking inside the center resets.
+    if (d <= currentCenterRadius) {
+      selectedChildIndex = null;  // Clear any child selection.
+      animProgress = 0;
+      animating = true;
+      state = "contracting";
+      centerLabel = "Family Hub\n$" + formatNumber(overallTotal);
+      baseCenterLabel = centerLabel;
+      currentGrowthValue = overallTotal;
+      growthData = computeOverallGrowthData();
+    }
+    // 2. Clicking on the asset's (parent's) ring resets the child selection.
+    else if (d > currentCenterRadius && d <= currentCenterRadius + normalChildThickness) {
+      selectedChildIndex = null;
+      let expCat = categories[expandedCategory];
+      let catSum = 0;
+      for (let child of expCat.children) {
+        if (child.visible !== false) {
+        catSum += child.value;
+      }
+      }
+      centerLabel = expCat.name + "\n$" + formatNumber(catSum);
+      baseCenterLabel = centerLabel;
+      currentGrowthValue = catSum;
+      growthData = computeCategoryGrowthData(expCat);
+    }
+    // 3. Clicking on a child segment.
+    else if (d > (currentCenterRadius + normalChildThickness + gapBetweenRings) &&
+             d <= (currentCenterRadius + normalChildThickness + gapBetweenRings + normalParentThickness)) {
+      let clickAngle = degrees(atan2(mouseY - centerY, mouseX - centerX));
+      if (clickAngle < 0) clickAngle += 360;
+      let expCat = categories[expandedCategory];
+      let childTotal = 0;
+      for (let child of expCat.children) {
+        if (child.visible !== false) {
+        childTotal += child.value;
+        }
+      }
+      let targetChildAngles = [];
+      let visibleChildIndices = [];
+      let accAngle = 0;
+      for (let j = 0; j < expCat.children.length; j++) {
+        let child = expCat.children[j];
+        if (child.visible === false) continue;
+        let span = (child.value / childTotal) * 360;
+        targetChildAngles.push({ start: accAngle, end: accAngle + span });
+        visibleChildIndices.push(j);
+        accAngle += span;
+      }
+      for (let k = 0; k < targetChildAngles.length; k++) {
+        let seg = targetChildAngles[k];
+        if (clickAngle >= seg.start && clickAngle < seg.end) {
+          let actualChildIndex = visibleChildIndices[k];
+          selectedChildIndex = actualChildIndex;  // Record the clicked child index.
+          let child = expCat.children[actualChildIndex];
+          centerLabel = child.name + "\n$" + formatNumber(child.value);
+          baseCenterLabel = centerLabel;
+          currentGrowthValue = child.value;
+          growthData = (child.weeks && child.weeks.length === 52) ? child.weeks : getGrowthData(child.value);
+          break;
+        }
+      }
+    }
+  }
+}
+  </script>
+</body>
+</html>
