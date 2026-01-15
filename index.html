@@ -354,6 +354,9 @@ let diagramDiameter = 347;
 let outerRadius = diagramDiameter / 2;
 let centerX, centerY;
 
+// Angle offset to rotate the chart (in degrees)
+let angleOffset = -90; // Rotate chart to start at top (12 o'clock) by default
+
 // State for animation.
 let state = "normal"; // "normal", "expanding", "expanded", "contracting"
 let expandedCategory = null;
@@ -382,19 +385,20 @@ let currentGrowthValue = 0; // The current value (total, category sum, or child 
 // UI variables.
 let parentThicknessSlider, childThicknessSlider, parentThicknessInput, childThicknessInput;
 let gapParentSegSlider, gapParentSegInput, gapChildSegSlider, gapChildSegInput;
+let startAngleSlider, startAngleInput; // start angle controls
 let dataEditorDiv, saveSvgButton;
 let alternateCheckbox; // checkbox for alternate child colors
 let alternateChildColors = false; // global flag
 let diameterSlider, diameterInput; // diameter controls
 let controlPanel, controlPanelContent, togglePanelBtn; // collapsible panel elements
 let sortOrderSelect; // dropdown for sort order
-let sortOrder = "none"; // "none", "ascending", "descending"
+let sortOrder = "descending"; // "none", "ascending", "descending"
 let fontSelect; // dropdown for font selection
 let selectedFont = "Phonic"; // default font
 let gradientCheckbox; // checkbox for radial gradient
 let useGradient = false; // default off
 let showInnerInfoCheckbox; // checkbox for showing inner info (graph and text)
-let showInnerInfo = true; // default on
+let showInnerInfo = false; // default off
 
 // Categories data – each category has a name, base HSL values, and children.
 let categories;
@@ -462,7 +466,7 @@ function computeNormalAngles() {
   if (total === 0) return [];
   
   let angles = [];
-  let currentAngle = 0;
+  let currentAngle = angleOffset;
   for (let cat of categories) {
     if (cat.visible === false) continue;
     
@@ -705,14 +709,36 @@ function setup() {
     }
   });
   
+  // Start Angle control
+  let p5 = createP("Start Angle (degrees)");
+  chartVisualsDiv.child(p5);
+  startAngleSlider = createSlider(-180, 180, angleOffset);
+  chartVisualsDiv.child(startAngleSlider);
+  startAngleInput = createInput(angleOffset.toString());
+  startAngleInput.style("background", "#1a1a1a");
+  startAngleInput.style("color", "#fff");
+  startAngleInput.style("border", "1px solid #2a2a2a");
+  chartVisualsDiv.child(startAngleInput);
+  startAngleSlider.input(() => {
+    angleOffset = startAngleSlider.value();
+    startAngleInput.value(angleOffset);
+  });
+  startAngleInput.input(() => {
+    let val = parseFloat(startAngleInput.value());
+    if (!isNaN(val) && val >= -180 && val <= 180) {
+      angleOffset = val;
+      startAngleSlider.value(val);
+    }
+  });
+  
   // Checkbox for showing inner info (graph and text)
-  showInnerInfoCheckbox = createCheckbox("Show Inner Info", true);
+  showInnerInfoCheckbox = createCheckbox("Show Inner Info", false);
   showInnerInfoCheckbox.style("margin-top", "10px");
   chartVisualsDiv.child(showInnerInfoCheckbox);
   showInnerInfoCheckbox.changed(() => {
     showInnerInfo = showInnerInfoCheckbox.checked();
   });
-  showInnerInfo = true; // Default on
+  showInnerInfo = false; // Default off
   
   controlPanelContent.child(chartVisualsDiv);
   
@@ -744,7 +770,7 @@ function setup() {
   sortOrderSelect.option("None");
   sortOrderSelect.option("Ascending");
   sortOrderSelect.option("Descending");
-  sortOrderSelect.selected("None");
+  sortOrderSelect.selected("Descending");
   sortOrderSelect.changed(() => {
     sortOrder = sortOrderSelect.value().toLowerCase();
     sortCategoriesAndChildren();
@@ -1109,8 +1135,8 @@ function draw() {
     let currentChildThickness = lerp(normalChildThickness, normalParentThickness, p);
     
     // Draw the expanded category.
-    let currentParentStart = lerp(expandedNormalParentStart, 0, p);
-    let currentParentEnd = lerp(expandedNormalParentEnd, 360, p);
+    let currentParentStart = lerp(expandedNormalParentStart, angleOffset, p);
+    let currentParentEnd = lerp(expandedNormalParentEnd, angleOffset + 360, p);
     let parentInner = currentCenterRadius;
     let parentOuter = parentInner + currentParentThickness;
     let expCat = categories[expandedCategory];
@@ -1130,7 +1156,7 @@ function draw() {
       }
     }
     let targetChildAngles = [];
-    let accAngle = 0;
+    let accAngle = angleOffset;
     for (let child of expCat.children) {
       if (child.visible === false) continue;
       let span = (child.value / childTotal) * 360;
@@ -1172,13 +1198,13 @@ function draw() {
       let arc = angles[i];
       let target;
       if (expandedCategory === 0) {
-        target = 360;
+        target = angleOffset + 360;
       } else if (expandedCategory === angles.length - 1) {
-        target = 0;
+        target = angleOffset;
       } else {
         let expandedMid = (expandedNormalParentStart + expandedNormalParentEnd) / 2;
         let mid = (arc.start + arc.end) / 2;
-        target = (mid < expandedMid ? 0 : 360);
+        target = (mid < expandedMid ? angleOffset : angleOffset + 360);
       }
       let currentStart = lerp(arc.start, target, p);
       let currentEnd = lerp(arc.end, target, p);
@@ -1215,6 +1241,23 @@ function draw() {
       }
     }
   }
+  
+  // Draw percentage grid (100 lines) only on the category ring
+  // Calculate category ring bounds based on current state
+  let categoryInnerR, categoryOuterR;
+  if (state === "normal") {
+    categoryInnerR = currentCenterRadius;
+    categoryOuterR = currentCenterRadius + normalParentThickness;
+  } else if (state === "expanding" || state === "expanded" || state === "contracting") {
+    let p = (state === "contracting") ? 1 - animProgress : animProgress;
+    let currentParentThickness = lerp(normalParentThickness, normalChildThickness, p);
+    categoryInnerR = currentCenterRadius;
+    categoryOuterR = currentCenterRadius + currentParentThickness;
+  } else {
+    categoryInnerR = currentCenterRadius;
+    categoryOuterR = currentCenterRadius + normalParentThickness;
+  }
+  drawPercentageGrid(categoryInnerR, categoryOuterR);
   
   // Draw the center graph and text (if enabled).
   if (showInnerInfo) {
@@ -1316,6 +1359,25 @@ function drawDonutSegmentWithGradient(cx, cy, innerR, outerR, startAngleDeg, end
   } catch(e) {
     // Fallback to solid color if gradient fails
     drawDonutSegment(cx, cy, innerR, outerR, startAngleDeg, endAngleDeg, gapLeftPx, gapRightPx, col);
+  }
+}
+
+function drawPercentageGrid(innerRadius, outerRadius) {
+  // Draw 100 lines evenly spaced (360/100 = 3.6 degrees apart)
+  // Lines only within the category ring bounds
+  stroke(0, 0, 0, 100); // Black lines
+  strokeWeight(1);
+  
+  for (let i = 0; i < 100; i++) {
+    let angle = radians(i * 3.6 + angleOffset); // 3.6 degrees per line (360/100), rotated by offset
+    
+    // Calculate start and end points within the category ring
+    let startX = centerX + cos(angle) * innerRadius;
+    let startY = centerY + sin(angle) * innerRadius;
+    let endX = centerX + cos(angle) * outerRadius;
+    let endY = centerY + sin(angle) * outerRadius;
+    
+    line(startX, startY, endX, endY);
   }
 }
 
@@ -1470,6 +1532,39 @@ function drawCenterText(currentCenterRadius) {
 // MOUSE INTERACTION
 //////////////////////////////
 
+// Helper function to check if an angle is within a segment range
+// Handles wrap-around segments and angles that may be negative or > 360
+// Both angle and segment angles should be in the same coordinate system (0-360 after normalization)
+function isAngleInSegment(angle, segStart, segEnd) {
+  // Normalize click angle to 0-360
+  let normAngle = ((angle % 360) + 360) % 360;
+  
+  // Normalize segment angles to 0-360
+  let normStart = ((segStart % 360) + 360) % 360;
+  let normEnd = ((segEnd % 360) + 360) % 360;
+  
+  // Calculate the span (always positive, represents actual angular distance)
+  let span = segEnd - segStart;
+  while (span < 0) span += 360;
+  while (span >= 360) span -= 360;
+  
+  // Recalculate normalized end based on span to ensure consistency
+  let calculatedEnd = (normStart + span) % 360;
+  
+  // Use the calculated end (based on span) rather than direct normalization
+  // This ensures we preserve the actual segment size
+  if (normStart < calculatedEnd) {
+    // Normal segment, no wrap-around
+    return (normAngle >= normStart && normAngle < calculatedEnd);
+  } else if (normStart > calculatedEnd) {
+    // Segment wraps around 0/360 boundary
+    return (normAngle >= normStart || normAngle < calculatedEnd);
+  } else {
+    // Edge case: zero-width or full circle
+    return (span === 360 || (span === 0 && normAngle === normStart));
+  }
+}
+
 function mousePressed() {
   let totalRingThickness = normalParentThickness + gapBetweenRings + normalChildThickness;
   let currentCenterRadius = outerRadius - totalRingThickness;
@@ -1479,11 +1574,16 @@ function mousePressed() {
   if (state === "normal") {
     // Clicking in the parent ring.
     if (d >= currentCenterRadius && d <= currentCenterRadius + normalParentThickness) {
+      // Calculate click angle - segments are already computed with angleOffset,
+      // so we just need to normalize the click angle to 0-360 for comparison
       let angle = degrees(atan2(mouseY - centerY, mouseX - centerX));
+      // Normalize to 0-360 range for comparison
       if (angle < 0) angle += 360;
+      
       let angles = computeNormalAngles();
       for (let i = 0; i < angles.length; i++) {
-        if (angle >= angles[i].start && angle < angles[i].end) {
+        // Use helper function to check if click angle is within segment
+        if (isAngleInSegment(angle, angles[i].start, angles[i].end)) {
           expandedCategory = angles[i].categoryIndex !== undefined ? angles[i].categoryIndex : i;
           expandedNormalParentStart = angles[i].start;
           expandedNormalParentEnd = angles[i].end;
@@ -1540,6 +1640,7 @@ function mousePressed() {
     else if (d > (currentCenterRadius + normalChildThickness + gapBetweenRings) &&
              d <= (currentCenterRadius + normalChildThickness + gapBetweenRings + normalParentThickness)) {
       let clickAngle = degrees(atan2(mouseY - centerY, mouseX - centerX));
+      // Normalize to 0-360 range for comparison
       if (clickAngle < 0) clickAngle += 360;
       let expCat = categories[expandedCategory];
       let childTotal = 0;
@@ -1550,7 +1651,7 @@ function mousePressed() {
       }
       let targetChildAngles = [];
       let visibleChildIndices = [];
-      let accAngle = 0;
+      let accAngle = angleOffset;
       for (let j = 0; j < expCat.children.length; j++) {
         let child = expCat.children[j];
         if (child.visible === false) continue;
@@ -1561,7 +1662,8 @@ function mousePressed() {
       }
       for (let k = 0; k < targetChildAngles.length; k++) {
         let seg = targetChildAngles[k];
-        if (clickAngle >= seg.start && clickAngle < seg.end) {
+        // Use helper function to check if click angle is within segment
+        if (isAngleInSegment(clickAngle, seg.start, seg.end)) {
           let actualChildIndex = visibleChildIndices[k];
           selectedChildIndex = actualChildIndex;  // Record the clicked child index.
           let child = expCat.children[actualChildIndex];
