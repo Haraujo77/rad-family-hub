@@ -364,6 +364,27 @@ let animating = false;
 let animProgress = 0; // from 0 to 1
 const animDuration = 30; // frames
 
+// State for reveal animation
+let revealProgress = 0; // from 0 to 1 (similar to animProgress in expansion animation)
+let revealAnimating = false; // similar to animating flag in expansion animation
+const revealDuration = 90; // frames for reveal animation (similar to animDuration = 30)
+const staggerDelay = 0.15; // delay between each segment starting (as fraction of total duration)
+let hasRevealed = true; // track if reveal has been triggered - start as true so chart shows
+let revealButton; // button to trigger reveal
+
+// Easing function for smooth reveal animation (ease-out cubic)
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+// More aggressive ease out for reveal animation (slows down more at the end)
+function easeOutQuint(t) {
+  return 1 - Math.pow(1 - t, 5);
+}
+
+// Reveal animation uses ring thickness animation, not value animation
+// (removed getRevealedValue - we'll animate thickness instead)
+
 // For expansion animation.
 let expandedNormalParentStart, expandedNormalParentEnd;
 let expandedNormalChildAngles = []; // array of {start, end} for each child
@@ -394,6 +415,61 @@ let controlPanel, controlPanelContent, togglePanelBtn; // collapsible panel elem
 let sortOrderSelect; // dropdown for sort order
 let sortOrder = "descending"; // "none", "ascending", "descending"
 let fontSelect; // dropdown for font selection
+let paletteSelect; // dropdown for color palette selection
+
+// Color palettes - each palette is an array of hex colors
+const colorPalettes = {
+  "Current": [
+    "#5B8DFF", // Jordan (hue: 216)
+    "#B366FF", // Charlie and Jordan (hue: 256)
+    "#7CCF00", // Charlie (hue: 84)
+    "#FE794C"  // Ruby (hue: 15)
+  ],
+  "Palette 1": [
+    "#FCC921", // Lumen Dark
+    "#F58B00", // Sol Dark
+    "#B85800", // Resin Dark
+    "#CA3D00", // Joule Dark
+    "#B8395D", // UV Dark
+    "#9D800A", // Droid Dark
+    "#328A97", // Dot Dark
+    "#0051C1"  // Hydro Dark
+  ],
+  "Palette 2": [
+    "#0066FF", // Vibrant Blue
+    "#D4A017", // Golden Yellow/Mustard
+    "#4A9B9F", // Muted Teal
+    "#D81B60", // Deep Rose/Fuchsia Pink
+    "#FFEB3B", // Bright Pure Yellow
+    "#BA68C8", // Soft Lavender
+    "#FF9800", // Bright Orange
+    "#E53935", // Vivid Orange-Red
+    "#9C27B0"  // Medium Violet/Purple
+  ],
+  "Palette 3": [
+    "#8BC34A", // Bright Lime Green
+    "#E91E63", // Hot Pink
+    "#00796B", // Deep Teal
+    "#9575CD", // Medium Lavender
+    "#FF5722", // Vibrant Coral Orange
+    "#2196F3", // Electric Blue
+    "#FF9800", // Golden Orange
+    "#03A9F4", // Light Sky Blue
+    "#CE93D8", // Soft Lilac
+    "#B39DDB"  // Muted Mauve
+  ],
+  "Palette 4": [
+    "#1976D2", // Vibrant Blue
+    "#00897B", // Deep Teal/Green
+    "#FDD835", // Bright Yellow
+    "#E91E63", // Hot Pink
+    "#00BCD4", // Light Aqua/Cyan
+    "#9575CD", // Medium Lavender
+    "#FF7043", // Coral Orange
+    "#F48FB1", // Soft Mauve Pink
+    "#E1BEE7"  // Pale Lilac Purple
+  ]
+};
 let selectedFont = "Phonic"; // default font
 let gradientCheckbox; // checkbox for radial gradient
 let useGradient = false; // default off
@@ -452,7 +528,13 @@ function computeTotalSum() {
 }
 
 // Compute angular ranges (in degrees) for each category and its children (only visible ones).
+// During reveal animation, segments grow clockwise from their start angle
 function computeNormalAngles() {
+  // Get reveal progress (1.0 = fully revealed, 0.0 = not revealed)
+  // Use easeOutQuint for more aggressive slow-down at the end
+  let revealP = hasRevealed ? 1 : easeOutQuint(revealProgress);
+  
+  // First, compute final angles with full values
   let total = 0;
   for (let cat of categories) {
     if (cat.visible !== false) {
@@ -465,7 +547,8 @@ function computeNormalAngles() {
   }
   if (total === 0) return [];
   
-  let angles = [];
+  // Compute final angles (with full values)
+  let finalAngles = [];
   let currentAngle = angleOffset;
   for (let cat of categories) {
     if (cat.visible === false) continue;
@@ -478,26 +561,103 @@ function computeNormalAngles() {
     }
     if (catSum === 0) continue;
     
-    let catAngleSpan = (catSum / total) * 360;
-    let catStart = currentAngle;
-    let catEnd = currentAngle + catAngleSpan;
-    let childAngles = [];
-    let childCurrent = catStart;
+    let finalCatAngleSpan = (catSum / total) * 360;
+    let finalCatStart = currentAngle;
+    let finalCatEnd = currentAngle + finalCatAngleSpan;
+    let finalChildAngles = [];
+    let childCurrent = finalCatStart;
     for (let child of cat.children) {
       if (child.visible === false) continue;
-      let span = (child.value / catSum) * catAngleSpan;
-      childAngles.push({ start: childCurrent, end: childCurrent + span });
-      childCurrent += span;
+      let finalSpan = (child.value / catSum) * finalCatAngleSpan;
+      finalChildAngles.push({ 
+        finalStart: childCurrent, 
+        finalEnd: childCurrent + finalSpan 
+      });
+      childCurrent += finalSpan;
     }
-    angles.push({ start: catStart, end: catEnd, children: childAngles, categoryIndex: categories.indexOf(cat) });
-    currentAngle += catAngleSpan;
+    finalAngles.push({ 
+      finalStart: finalCatStart, 
+      finalEnd: finalCatEnd, 
+      children: finalChildAngles, 
+      categoryIndex: categories.indexOf(cat) 
+    });
+    currentAngle += finalCatAngleSpan;
   }
+  
+  // Now animate: segments slide into place and grow clockwise with stagger effect
+  let angles = [];
+  let categoryIndex = 0;
+  let previousCatEnd = angleOffset; // Track where previous category ended
+  
+  for (let finalAngle of finalAngles) {
+    // Calculate stagger delay for this category (each category starts after the previous)
+    let catStaggerDelay = categoryIndex * staggerDelay;
+    let catRevealProgress = max(0, min(1, (revealProgress - catStaggerDelay) / (1 - catStaggerDelay)));
+    let catRevealP = hasRevealed ? 1 : easeOutQuint(catRevealProgress);
+    
+    // Category start angle animates from previous category's end to final start
+    // This makes segments slide into place
+    let catStart = lerp(previousCatEnd, finalAngle.finalStart, catRevealP);
+    // Category end angle animates from animated start to final end
+    let catEnd = lerp(catStart, finalAngle.finalEnd, catRevealP);
+    
+    // Child segments also slide into place and grow clockwise with their own stagger
+    let childAngles = [];
+    let childIndex = 0;
+    let previousChildEnd = catStart; // Track where previous child ended
+    
+    for (let finalChild of finalAngle.children) {
+      // Each child starts after the category and previous children
+      let childStaggerDelay = catStaggerDelay + (childIndex + 1) * staggerDelay;
+      let childRevealProgress = max(0, min(1, (revealProgress - childStaggerDelay) / (1 - childStaggerDelay)));
+      let childRevealP = hasRevealed ? 1 : easeOutQuint(childRevealProgress);
+      
+      // Child start animates from previous child's end to final start
+      let childStart = lerp(previousChildEnd, finalChild.finalStart, childRevealP);
+      // Child end animates from animated start to final end
+      let childEnd = lerp(childStart, finalChild.finalEnd, childRevealP);
+      
+      childAngles.push({ start: childStart, end: childEnd });
+      previousChildEnd = childEnd; // Update for next child
+      childIndex++;
+    }
+    
+    angles.push({ 
+      start: catStart, 
+      end: catEnd, 
+      children: childAngles, 
+      categoryIndex: finalAngle.categoryIndex 
+    });
+    previousCatEnd = catEnd; // Update for next category
+    categoryIndex++;
+  }
+  
   return angles;
 }
 
 //////////////////////////////
 // SETUP & DATA EDITOR
 //////////////////////////////
+
+// Function to apply a color palette to categories
+function applyColorPalette(paletteName) {
+  let palette = colorPalettes[paletteName];
+  if (!palette) return;
+  
+  // Apply colors to visible categories
+  let visibleCategories = categories.filter(cat => cat.visible !== false);
+  for (let i = 0; i < visibleCategories.length; i++) {
+    let colorIndex = i % palette.length; // Cycle through palette if more categories than colors
+    let hexColor = palette[colorIndex];
+    let hsl = hexToHsl(hexColor);
+    visibleCategories[i].hue = hsl.h;
+    visibleCategories[i].sat = hsl.s;
+    visibleCategories[i].light = hsl.l;
+  }
+  
+  // Update the data editor UI to reflect the new colors
+  updateDataEditor();
+}
 
 function setup() {
   let cnv = createCanvas(canvasSize, canvasSize, SVG);
@@ -740,6 +900,31 @@ function setup() {
   });
   showInnerInfo = false; // Default off
   
+  // Reveal animation button
+  revealButton = createButton("Reveal Chart");
+  revealButton.style("margin-top", "15px");
+  revealButton.style("width", "100%");
+  revealButton.style("background", "#333");
+  revealButton.style("color", "#fff");
+  revealButton.style("border", "1px solid #555");
+  revealButton.style("border-radius", "6px");
+  revealButton.style("padding", "10px");
+  revealButton.style("cursor", "pointer");
+  revealButton.style("font-size", "14px");
+  revealButton.style("font-weight", "bold");
+  revealButton.mousePressed(() => {
+    if (!revealAnimating) {
+      // Reset and replay reveal animation (similar to how expansion sets animating = true)
+      hasRevealed = false;
+      revealAnimating = true;
+      revealProgress = 0; // Start from 0, like animProgress starts at 0
+      revealButton.html("Revealing...");
+      revealButton.style("background", "#444");
+      revealButton.style("cursor", "default");
+    }
+  });
+  chartVisualsDiv.child(revealButton);
+  
   controlPanelContent.child(chartVisualsDiv);
   
   // Font selection dropdown - label and dropdown in same line
@@ -758,6 +943,24 @@ function setup() {
   });
   fontDiv.child(fontSelect);
   controlPanelContent.child(fontDiv);
+  
+  // Color Palette Selector
+  let paletteDiv = createDiv();
+  paletteDiv.style("display", "flex");
+  paletteDiv.style("align-items", "center");
+  paletteDiv.style("gap", "8px");
+  paletteDiv.style("margin-bottom", "10px");
+  paletteDiv.child(createSpan("Color Palette:"));
+  paletteSelect = createSelect();
+  for (let paletteName in colorPalettes) {
+    paletteSelect.option(paletteName);
+  }
+  paletteSelect.selected("Current");
+  paletteSelect.changed(() => {
+    applyColorPalette(paletteSelect.value());
+  });
+  paletteDiv.child(paletteSelect);
+  controlPanelContent.child(paletteDiv);
   
   // Sort order dropdown - label and dropdown in same line
   let sortDiv = createDiv();
@@ -1054,13 +1257,41 @@ function updateDataEditor() {
 function draw() {
   background(0);
   
+  // Update reveal animation (runs every frame, just like expansion animation)
+  if (revealAnimating) {
+    revealProgress += 1 / revealDuration;
+    // Clamp to 1
+    if (revealProgress > 1) revealProgress = 1;
+    if (revealProgress >= 1) {
+      revealProgress = 1;
+      revealAnimating = false;
+      hasRevealed = true;
+      revealButton.html("Reveal Chart");
+      revealButton.style("background", "#333");
+      revealButton.style("cursor", "pointer");
+    }
+  }
+  
+  // During reveal animation, values animate from 0, so we always draw (even if progress is 0)
+  // The chart will be visible but segments will grow from 0
+  
   // Do not update growthData per frame; it only changes on mouse interactions.
   normalParentThickness = parentThicknessSlider.value();
   normalChildThickness = childThicknessSlider.value();
-  // Compute the total ring thickness in normal mode.
-  let totalRingThickness = normalParentThickness + gapBetweenRings + normalChildThickness;
-  // Use the same currentCenterRadius for detecting clicks.
-  let currentCenterRadius = outerRadius - totalRingThickness;
+  
+  // Calculate reveal animation progress (similar to expansion animation's p)
+  let revealP = hasRevealed ? 1 : easeOutQuint(revealProgress);
+  
+  // Calculate center radius using FINAL thickness (not animated) so center stays fixed
+  // This makes rings grow from inside out
+  let finalTotalRingThickness = normalParentThickness + gapBetweenRings + normalChildThickness;
+  let currentCenterRadius = outerRadius - finalTotalRingThickness;
+  
+  // Animate ring thickness from 0 (thin) to normal (like expansion animates thickness)
+  // This makes rings grow outward from the fixed center
+  // Base thickness (will be overridden per category with stagger)
+  let currentParentThickness = lerp(0, normalParentThickness, revealP);
+  let currentChildThickness = lerp(0, normalChildThickness, revealP);
   
   // Draw the black center (reset) circle.
   fill(0);
@@ -1100,9 +1331,16 @@ function draw() {
       let cat = categories[catIndex];
       if (cat.visible === false) continue;
       
+      // Calculate stagger for this category's ring thickness
+      let catStaggerDelay = i * staggerDelay;
+      let catThicknessRevealProgress = max(0, min(1, (revealProgress - catStaggerDelay) / (1 - catStaggerDelay)));
+      let catThicknessRevealP = hasRevealed ? 1 : easeOutQuint(catThicknessRevealProgress);
+      let catParentThickness = lerp(0, normalParentThickness, catThicknessRevealP);
+      let catChildThickness = lerp(0, normalChildThickness, catThicknessRevealP);
+      
       let catColor = color(hslToHex(cat.hue, cat.sat, cat.light));
       let innerR = currentCenterRadius;
-      let outerR = innerR + normalParentThickness;
+      let outerR = innerR + catParentThickness; // Use staggered thickness
       if (useGradient) {
         drawDonutSegmentWithGradient(centerX, centerY, innerR, outerR, catAngle.start, catAngle.end,
                            gapBetweenParentSegments, gapBetweenParentSegments, catColor);
@@ -1112,7 +1350,7 @@ function draw() {
       }
       
       let childInner = outerR + gapBetweenRings;
-      let childOuter = childInner + normalChildThickness;
+      let childOuter = childInner + catChildThickness; // Use staggered thickness
       let childAngles = catAngle.children;
       let visibleChildIndex = 0;
       for (let j = 0; j < cat.children.length; j++) {
@@ -1131,12 +1369,24 @@ function draw() {
   } else if (state === "expanding" || state === "expanded" || state === "contracting") {
     // In expanded mode, use interpolation.
     let p = (state === "contracting") ? 1 - animProgress : animProgress;
-    let currentParentThickness = lerp(normalParentThickness, normalChildThickness, p);
-    let currentChildThickness = lerp(normalChildThickness, normalParentThickness, p);
+    // First calculate expansion thickness (like normal expansion animation)
+    let expandedParentThickness = lerp(normalParentThickness, normalChildThickness, p);
+    let expandedChildThickness = lerp(normalChildThickness, normalParentThickness, p);
+    // Then apply reveal animation to thickness (from 0 to expanded thickness)
+    currentParentThickness = lerp(0, expandedParentThickness, revealP);
+    currentChildThickness = lerp(0, expandedChildThickness, revealP);
     
     // Draw the expanded category.
-    let currentParentStart = lerp(expandedNormalParentStart, angleOffset, p);
-    let currentParentEnd = lerp(expandedNormalParentEnd, angleOffset + 360, p);
+    // First compute the expanded angles (expansion animation)
+    let expandedParentStart = lerp(expandedNormalParentStart, angleOffset, p);
+    let expandedParentEnd = lerp(expandedNormalParentEnd, angleOffset + 360, p);
+    // Then apply reveal animation: segment slides into place and grows clockwise
+    // Parent segment starts first (no stagger delay)
+    let parentRevealP = hasRevealed ? 1 : easeOutQuint(revealProgress);
+    // Start angle animates from normal start to expanded start
+    let currentParentStart = lerp(expandedNormalParentStart, expandedParentStart, parentRevealP);
+    // End angle animates from animated start to expanded end
+    let currentParentEnd = lerp(currentParentStart, expandedParentEnd, parentRevealP);
     let parentInner = currentCenterRadius;
     let parentOuter = parentInner + currentParentThickness;
     let expCat = categories[expandedCategory];
@@ -1149,19 +1399,44 @@ function draw() {
                      gapBetweenParentSegments, gapBetweenParentSegments, expColor);
     }
     
+    // Compute final child angles with full values
     let childTotal = 0;
     for (let child of expCat.children) {
       if (child.visible !== false) {
       childTotal += child.value;
       }
     }
-    let targetChildAngles = [];
+    // Compute final target angles
+    let finalTargetChildAngles = [];
     let accAngle = angleOffset;
     for (let child of expCat.children) {
       if (child.visible === false) continue;
-      let span = (child.value / childTotal) * 360;
-      targetChildAngles.push({ start: accAngle, end: accAngle + span });
-      accAngle += span;
+      let finalSpan = (child.value / childTotal) * 360;
+      finalTargetChildAngles.push({ 
+        finalStart: accAngle, 
+        finalEnd: accAngle + finalSpan 
+      });
+      accAngle += finalSpan;
+    }
+    // Animate: segments slide into place and grow clockwise with stagger
+    let targetChildAngles = [];
+    let childIndex = 0;
+    let previousChildEnd = angleOffset; // Track where previous child ended
+    
+    for (let finalChild of finalTargetChildAngles) {
+      // Each child starts with a stagger delay
+      let childStaggerDelay = childIndex * staggerDelay;
+      let childRevealProgress = max(0, min(1, (revealProgress - childStaggerDelay) / (1 - childStaggerDelay)));
+      let childRevealP = hasRevealed ? 1 : easeOutQuint(childRevealProgress);
+      
+      // Child start animates from previous child's end to final start
+      let childStart = lerp(previousChildEnd, finalChild.finalStart, childRevealP);
+      // Child end animates from animated start to final end
+      let childEnd = lerp(childStart, finalChild.finalEnd, childRevealP);
+      
+      targetChildAngles.push({ start: childStart, end: childEnd });
+      previousChildEnd = childEnd; // Update for next child
+      childIndex++;
     }
     let childInner = parentOuter + gapBetweenRings;
     let childOuter = childInner + currentChildThickness;
@@ -1180,13 +1455,14 @@ function draw() {
       let currentChildEnd = lerp(normChild.end, target.end, p);
       let childColor = getChildColorHSL(expCat.hue, expCat.sat, expCat.light, actualChildIndex, expCat.children.length);
       // If a child segment was clicked, make all non-selected segments 50% opaque.
+      let baseAlpha = 100;
       if (selectedChildIndex !== null) {
         if (actualChildIndex !== selectedChildIndex) {
-          childColor.setAlpha(50);
-        } else {
-          childColor.setAlpha(100);
+          baseAlpha = 50;
         }
       }
+      // Apply base alpha
+      childColor.setAlpha(baseAlpha);
       drawDonutSegment(centerX, centerY, childInner, childOuter, currentChildStart, currentChildEnd,
                          gapBetweenChildSegments, gapBetweenChildSegments, childColor);
     }
@@ -1243,26 +1519,26 @@ function draw() {
   }
   
   // Draw percentage grid (100 lines) only on the category ring
-  // Calculate category ring bounds based on current state
+  // Calculate category ring bounds based on current state (using animated thickness)
   let categoryInnerR, categoryOuterR;
-  if (state === "normal") {
-    categoryInnerR = currentCenterRadius;
-    categoryOuterR = currentCenterRadius + normalParentThickness;
-  } else if (state === "expanding" || state === "expanded" || state === "contracting") {
-    let p = (state === "contracting") ? 1 - animProgress : animProgress;
-    let currentParentThickness = lerp(normalParentThickness, normalChildThickness, p);
-    categoryInnerR = currentCenterRadius;
-    categoryOuterR = currentCenterRadius + currentParentThickness;
-  } else {
-    categoryInnerR = currentCenterRadius;
-    categoryOuterR = currentCenterRadius + normalParentThickness;
-  }
+  categoryInnerR = currentCenterRadius;
+  categoryOuterR = currentCenterRadius + currentParentThickness; // Use animated thickness
+  // Grid fades in with reveal
+  let gridAlpha = revealP * 100;
+  push();
+  stroke(0, 0, 0, gridAlpha);
   drawPercentageGrid(categoryInnerR, categoryOuterR);
+  pop();
   
   // Draw the center graph and text (if enabled).
+  // Fade in during reveal
   if (showInnerInfo) {
-    drawCenterGraph(currentCenterRadius);
-    drawCenterText(currentCenterRadius);
+    let centerAlpha = hasRevealed ? 100 : (easeOutQuint(revealProgress) * 100);
+    push();
+    drawingContext.globalAlpha = centerAlpha / 100;
+  drawCenterGraph(currentCenterRadius);
+  drawCenterText(currentCenterRadius);
+    pop();
   }
 }
 
@@ -1365,7 +1641,7 @@ function drawDonutSegmentWithGradient(cx, cy, innerR, outerR, startAngleDeg, end
 function drawPercentageGrid(innerRadius, outerRadius) {
   // Draw 100 lines evenly spaced (360/100 = 3.6 degrees apart)
   // Lines only within the category ring bounds
-  stroke(0, 0, 0, 100); // Black lines
+  // Note: stroke alpha is set before calling this function
   strokeWeight(1);
   
   for (let i = 0; i < 100; i++) {
@@ -1566,6 +1842,8 @@ function isAngleInSegment(angle, segStart, segEnd) {
 }
 
 function mousePressed() {
+  // Allow interactions during reveal animation (values are animating but chart is visible)
+  
   let totalRingThickness = normalParentThickness + gapBetweenRings + normalChildThickness;
   let currentCenterRadius = outerRadius - totalRingThickness;
   let d = dist(mouseX, mouseY, centerX, centerY);
