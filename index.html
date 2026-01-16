@@ -955,10 +955,12 @@ function setup() {
   for (let paletteName in colorPalettes) {
     paletteSelect.option(paletteName);
   }
-  paletteSelect.selected("Current");
+  paletteSelect.selected("Palette 2");
   paletteSelect.changed(() => {
     applyColorPalette(paletteSelect.value());
   });
+  // Apply default palette on initial load
+  applyColorPalette("Palette 2");
   paletteDiv.child(paletteSelect);
   controlPanelContent.child(paletteDiv);
   
