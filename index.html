@@ -955,7 +955,7 @@ function setup() {
   for (let paletteName in colorPalettes) {
     paletteSelect.option(paletteName);
   }
-  paletteSelect.selected("Palette 2");
+  paletteSelect.selected("Palette 3");
   paletteSelect.changed(() => {
     applyColorPalette(paletteSelect.value());
   });
@@ -987,7 +987,7 @@ function setup() {
   controlPanelContent.child(dataEditorDiv);
   
   // Apply default palette after categories are initialized
-  applyColorPalette("Palette 2");
+  applyColorPalette("Palette 3");
   updateDataEditor();
   
   // Checkbox for alternate child colors.
